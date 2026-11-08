@@ -16,12 +16,76 @@ const todayKey = () => dkey(new Date());
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 const haptic = (t = 'light') => { try { tg && tg.HapticFeedback && tg.HapticFeedback.impactOccurred(t); } catch (e) {} };
 
+/* ---------- catalog: categories & products ---------- */
+const CATS = [
+  { id: 'A', letter: 'А', name: 'Вуглеводи: крупи, хліб, картопля', color: '#3b82f6', def: 360 },
+  { id: 'B', letter: 'Б', name: 'Білки: м’ясо, риба, яйця', color: '#ef4444', def: 500 },
+  { id: 'V', letter: 'В', name: 'Овочі та гриби', color: '#22c55e', def: 120 },
+  { id: 'G', letter: 'Г', name: 'Жири та соуси', color: '#eab308', def: 216 },
+  { id: 'D', letter: 'Д', name: 'Молочні продукти', color: '#a855f7', def: 261 },
+  { id: 'E', letter: 'Е', name: 'Фрукти та ягоди', color: '#ec4899', def: 285 },
+  { id: 'Ye', letter: 'Є', name: 'Горіхи та насіння', color: '#6b7280', def: 120 },
+  { id: 'Zh', letter: 'Ж', name: 'Вільна категорія', color: '#f97316', def: 440 },
+];
+// ккал, білки, жири, вуглеводи — на 100 г (або на 1 шт, якщо unit: 'pcs')
+const P = (id, cat, name, kcal, p, f, c, extra = {}) => ({ id, cat, name, kcal, p, f, c, ...extra });
+const DRY = { note: 'вага сухого продукту' };
+const PRODUCTS = [
+  P('A1', 'A', 'Бобові', 310, 20, 2, 52, DRY),
+  P('A2', 'A', 'Будь-яка крупа', 330, 10, 2, 68, DRY),
+  P('A3', 'A', 'Картопля', 77, 2, 0.4, 16.3),
+  P('A4', 'A', 'Кукурудза свіжа', 86, 3.3, 1.4, 19),
+  P('A5', 'A', 'Лаваш', 240, 8, 1, 49),
+  P('A6', 'A', 'Макарони т.с.', 340, 12, 2, 68, DRY),
+  P('A7', 'A', 'Рис (не шліфований)', 330, 7.5, 2.5, 70, DRY),
+  P('A8', 'A', 'Хлібці', 320, 10, 2, 65),
+  P('A9', 'A', 'Цільнозернове борошно', 320, 11, 2, 64),
+  P('A10', 'A', 'Цільнозерновий хліб', 250, 9, 3.5, 45),
+
+  P('B1', 'B', 'Куряче або індиче філе', 110, 22, 2.5, 0),
+  P('B2', 'B', 'Морепродукти', 100, 20, 1.5, 1),
+  P('B3', 'B', 'Печінка', 130, 19, 4, 4),
+  P('B4', 'B', 'Риба (від 5% жиру)', 170, 18, 10.5, 0),
+  P('B5', 'B', 'Риба (до 5% жиру)', 110, 20, 3, 0),
+  P('B6', 'B', 'Телятина', 170, 20, 10, 0),
+  P('B7', 'B', 'Яйця (цілі)', 78.5, 6.3, 5.5, 0.5, { unit: 'pcs' }),
+
+  P('V1', 'V', 'Гриби', 20, 3.5, 0.5, 1),
+  P('V2', 'V', 'Овочі (квашені також і зелень)', 20, 1.5, 0.2, 3.5),
+
+  P('G1', 'G', 'Авокадо', 160, 2, 15, 4),
+  P('G2', 'G', 'Будь-яка олія', 900, 0, 100, 0),
+  P('G3', 'G', 'Гірчиця', 65, 5, 3.5, 4),
+  P('G4', 'G', 'Кетчуп', 100, 1, 0.2, 23),
+  P('G5', 'G', 'Майонез', 600, 1, 65, 2),
+  P('G6', 'G', 'Оливки', 115, 1, 11, 4),
+
+  P('D1', 'D', 'Кефір 1%', 42, 3.4, 1, 4.7),
+  P('D2', 'D', 'Молоко 1%', 40, 3.3, 1, 4.8),
+  P('D3', 'D', 'Несолодкий йогурт 1% жиру', 43, 4, 1, 4.5),
+  P('D4', 'D', 'Сир кисломолочний нежирний', 80, 17, 0.5, 1.8),
+  P('D5', 'D', 'Сири м’які, тверді, плавлені', 350, 20, 29, 1),
+  P('D6', 'D', 'Сметана 15%', 150, 2.6, 15, 3),
+
+  P('E1', 'E', 'Банани, виноград, хурма', 95, 1, 0.3, 22),
+  P('E2', 'E', 'Фрукти та ягоди', 50, 0.8, 0.3, 11),
+
+  P('Y1', 'Ye', 'Будь-які горіхи', 600, 16, 54, 14),
+  P('Y2', 'Ye', 'Насіння', 600, 20, 52, 14),
+
+  P('Z1', 'Zh', 'Банани, виноград, хурма, манго…', 95, 1, 0.3, 22),
+  P('Z2', 'Zh', 'Будь-що (солодощі, снеки, ковбаси…)', 500, 5, 28, 55),
+  P('Z3', 'Zh', 'Фрукти та ягоди', 50, 0.8, 0.3, 11),
+];
+
 /* ---------- state & storage ---------- */
 const KEY = 'fitgram_v1';
 const defaults = () => ({
   updatedAt: 0,
   profile: { name: '', sex: 'm', age: 30, height: 175, weight: 75, activity: 1.375, goal: 'maintain' },
-  goals: { kcal: 2200, p: 140, f: 70, c: 250, steps: 10000 },
+  goals: { kcal: CATS.reduce((s, c) => s + c.def, 0), p: 140, f: 70, c: 250, steps: 10000 },
+  catKcal: Object.fromEntries(CATS.map((c) => [c.id, c.def])),
+  customProducts: [],
   food: {}, steps: {}, workouts: {}, weights: {},
 });
 let state = defaults();
@@ -30,6 +94,10 @@ function merge(base, extra) {
   const out = { ...base, ...extra };
   out.profile = { ...base.profile, ...(extra.profile || {}) };
   out.goals = { ...base.goals, ...(extra.goals || {}) };
+  out.catKcal = { ...base.catKcal, ...(extra.catKcal || {}) };
+  out.customProducts = Array.isArray(extra.customProducts) ? extra.customProducts : [];
+  out.food = {}; // старий формат (список записів) відкидаємо, новий — { id продукту: кількість }
+  for (const [k, v] of Object.entries(extra.food || {})) if (v && typeof v === 'object' && !Array.isArray(v)) out.food[k] = v;
   return out;
 }
 function loadLocal() {
@@ -81,14 +149,13 @@ function persist() {
 
 /* ---------- constants ---------- */
 const TABS = [['food', '🍽', 'Харчування'], ['steps', '👟', 'Кроки'], ['workout', '🏋️', 'Тренування'], ['profile', '👤', 'Профіль']];
-const MEALS = [['breakfast', 'Сніданок', '🍳'], ['lunch', 'Обід', '🍲'], ['dinner', 'Вечеря', '🍝'], ['snack', 'Перекус', '🍎']];
 const WTYPES = { 'Силове': ['🏋️', 5], 'Кардіо': ['🏃', 7], 'Біг': ['👟', 9.8], 'Ходьба': ['🚶', 3.5], 'Велосипед': ['🚴', 7.5],
   'Плавання': ['🏊', 7], 'Йога': ['🧘', 3], 'HIIT': ['🔥', 10], 'Інше': ['⭐', 5] };
 const ACTIVITY = [[1.2, 'Сидячий (без тренувань)'], [1.375, 'Легка (1–3 тренування/тиждень)'], [1.55, 'Помірна (3–5 тренувань/тиждень)'],
   [1.725, 'Висока (6–7 тренувань/тиждень)'], [1.9, 'Дуже висока (фізична робота + спорт)']];
 const GOALS = [['lose', 'Схуднути'], ['maintain', 'Підтримувати вагу'], ['gain', 'Набрати масу']];
 
-const ui = { tab: 'food', date: todayKey(), sheet: null };
+const ui = { tab: 'food', date: todayKey(), sheet: null, collapsed: {} };
 
 /* ---------- date nav ---------- */
 function dateLabel(k) {
@@ -105,91 +172,186 @@ function dateNav() {
   </div>`;
 }
 
-/* ---------- FOOD ---------- */
-function bar(label, val, goal, cls) {
-  const pct = goal > 0 ? Math.min(100, (val / goal) * 100) : 0;
-  const over = goal > 0 && val > goal ? ' over' : '';
-  return `<div class="bar-row"><div class="top"><span>${label}</span><span>${fmt(val)} / ${fmt(goal)} г</span></div>
-    <div class="track"><div class="fill ${cls}${over}" style="width:${pct}%"></div></div></div>`;
+/* ---------- FOOD (category budgets) ---------- */
+const allProducts = () => PRODUCTS.concat(state.customProducts);
+const prodById = (id) => allProducts().find((p) => p.id === id);
+const catById = (id) => CATS.find((c) => c.id === id);
+const perOf = (p) => (p.unit === 'pcs' ? 1 : 100);
+const unitLbl = (p) => (p.unit === 'pcs' ? 'шт' : 'г');
+const kcalOf = (p, a) => (p.kcal * a) / perOf(p);
+const macroOf = (p, a, k) => ((p[k] || 0) * a) / perOf(p);
+const dayFood = () => state.food[ui.date] || {};
+const catBudget = (c) => num(state.catKcal[c.id]);
+
+function catUsed(c, skipId) {
+  const day = dayFood();
+  return allProducts().reduce((s, p) => s + (p.cat === c.id && p.id !== skipId ? kcalOf(p, day[p.id] || 0) : 0), 0);
 }
+// скільки всього цього продукту можна з’їсти за день, якщо решта в категорії лишається як є
+function maxAmt(p) {
+  if (!(p.kcal > 0)) return 0;
+  const c = catById(p.cat);
+  const left = catBudget(c) - catUsed(c, p.id);
+  return Math.max(0, Math.floor((left / p.kcal) * perOf(p) + 1e-9));
+}
+function dayTotals() {
+  const day = dayFood(), t = { kcal: 0, p: 0, f: 0, c: 0 };
+  for (const p of allProducts()) {
+    const a = day[p.id] || 0;
+    if (!a) continue;
+    t.kcal += kcalOf(p, a); t.p += macroOf(p, a, 'p'); t.f += macroOf(p, a, 'f'); t.c += macroOf(p, a, 'c');
+  }
+  return t;
+}
+// пропорційно розподіляє total ккал між категоріями; залишок округлення йде у найбільшу
+function spreadKcal(vals, total) {
+  const sum = CATS.reduce((s, c) => s + num(vals[c.id]), 0);
+  const out = {}; let acc = 0, big = CATS[0].id;
+  for (const c of CATS) {
+    out[c.id] = sum > 0 ? Math.round((num(vals[c.id]) * total) / sum) : Math.round(total / CATS.length);
+    acc += out[c.id];
+    if (out[c.id] > out[big]) big = c.id;
+  }
+  out[big] += Math.round(total) - acc;
+  return out;
+}
+
 function foodView() {
-  const items = state.food[ui.date] || [];
-  const t = items.reduce((a, i) => ({ kcal: a.kcal + i.kcal, p: a.p + i.p, f: a.f + i.f, c: a.c + i.c }), { kcal: 0, p: 0, f: 0, c: 0 });
-  const g = state.goals;
-  const left = g.kcal - t.kcal;
-  const pct = g.kcal > 0 ? Math.min(100, (t.kcal / g.kcal) * 100) : 0;
-  let html = `<h2>Харчування</h2>${dateNav()}
+  const t = dayTotals(), g = state.goals;
+  const budget = CATS.reduce((s, c) => s + catBudget(c), 0);
+  const pct = budget > 0 ? Math.min(100, (t.kcal / budget) * 100) : 0;
+  const day = dayFood();
+  let html = `<h2>Раціон</h2>${dateNav()}
   <div class="card">
-    <div class="row"><div><div class="big">${fmt(Math.abs(left))}</div><div class="hint">${left >= 0 ? 'ккал залишилось' : 'ккал понад ціль'}</div></div>
-      <div style="text-align:right"><div><b>${fmt(t.kcal)}</b> <span class="hint">з ${fmt(g.kcal)} ккал</span></div></div></div>
-    <div class="track" style="margin-top:10px"><div class="fill${left < 0 ? ' over' : ''}" style="width:${pct}%"></div></div>
-    ${bar('Білки', t.p, g.p, 'p')}${bar('Жири', t.f, g.f, 'f')}${bar('Вуглеводи', t.c, g.c, 'c')}
+    <div class="center"><div class="big">${fmt(t.p)} г</div><div class="hint">білків${g.p ? ` · ціль ${fmt(g.p)} г` : ''}</div></div>
+    <div class="row" style="margin-top:14px"><span class="hint">Калорії</span><span><b>${fmt(t.kcal)}</b> / ${fmt(budget)} ккал</span></div>
+    <div class="track" style="margin-top:6px"><div class="fill${t.kcal > budget ? ' over' : ''}" style="width:${pct}%"></div></div>
+    <div class="hint center" style="margin-top:8px">Жири ${fmt(t.f)} г · Вуглеводи ${fmt(t.c)} г</div>
   </div>
-  <button class="btn" data-a="add-food">+ Додати їжу</button>`;
-  if (!items.length) html += `<div class="empty">Поки нічого не записано.<br>Додайте перший прийом їжі 👆</div>`;
-  for (const [id, title, ic] of MEALS) {
-    const list = items.filter((i) => (i.meal || 'snack') === id);
-    if (!list.length) continue;
-    const sum = list.reduce((a, i) => a + i.kcal, 0);
-    html += `<div class="meal-title"><span>${ic} ${title}</span><span>${fmt(sum)} ккал</span></div>`;
-    html += list.map((i) => `<button class="item" data-a="edit-food" data-id="${i.id}">
-      <div><div class="name">${esc(i.name)}</div><div class="sub">Б ${r1(i.p)} · Ж ${r1(i.f)} · В ${r1(i.c)}</div></div>
-      <div class="kc">${fmt(i.kcal)} ккал</div></button>`).join('');
+  <button class="btn ghost" data-a="cats-settings" style="margin-bottom:14px">⚙️ Калорії по категоріях</button>`;
+  for (const c of CATS) {
+    const b = catBudget(c), left = b - catUsed(c), open = !ui.collapsed[c.id];
+    const cp = b > 0 ? Math.min(100, ((b - left) / b) * 100) : 0;
+    html += `<div class="cat"><button class="cat-head" data-a="toggle-cat" data-id="${c.id}">
+      <span class="badge" style="background:${c.color}">${c.letter}</span>
+      <span class="cat-info"><span class="cat-name">${esc(c.name)}</span>
+        <span class="sub${left < 0 ? ' bad' : ''}">${left >= 0 ? 'залишилось' : 'понад ліміт'} ${fmt(Math.abs(left))} з ${fmt(b)} ккал</span></span>
+      <span class="chev">${open ? '▾' : '▸'}</span></button>
+      <div class="track thin"><div class="fill${left < 0 ? ' over' : ''}" style="width:${cp}%;${left < 0 ? '' : 'background:' + c.color}"></div></div>`;
+    if (open) {
+      html += allProducts().filter((p) => p.cat === c.id).map((p) => {
+        const a = day[p.id] || 0, mx = maxAmt(p), over = a > mx;
+        const sub = a > 0
+          ? `з’їдено: ${fmt(kcalOf(p, a))} ккал · ${r1(macroOf(p, a, 'p'))} г білка`
+          : `${fmt(kcalOf(p, mx))} ккал · ${r1(macroOf(p, mx, 'p'))} г білка`;
+        return `<button class="prow" data-a="open-product" data-id="${p.id}">
+          <span class="pname"><span class="name">${esc(p.name)}</span><span class="sub">${sub}</span></span>
+          <span class="amt${a > 0 ? ' on' : ''}${over ? ' bad' : ''}">${fmt(a)} / ${fmt(mx)} ${unitLbl(p)}</span></button>`;
+      }).join('');
+      html += `<button class="addp" data-a="add-custom" data-cat="${c.id}">+ Додати свій продукт</button>`;
+    }
+    html += '</div>';
   }
   return html;
 }
-function recentFoods() {
-  const seen = new Set(), out = [];
-  for (const k of Object.keys(state.food).sort().reverse()) {
-    for (const i of [...state.food[k]].reverse()) {
-      const n = i.name.toLowerCase();
-      if (seen.has(n)) continue;
-      seen.add(n); out.push(i);
-      if (out.length >= 8) return out;
-    }
-  }
-  return out;
-}
+
 function field(label, id, value, opts = {}) {
   const { type = 'text', inputmode = '', ph = '', attrs = '' } = opts;
   return `<div class="field"><label for="${id}">${label}</label>
     <input id="${id}" type="${type}" ${inputmode ? `inputmode="${inputmode}"` : ''} placeholder="${esc(ph)}" value="${esc(value)}" ${attrs}></div>`;
 }
-function foodSheet() {
-  const s = ui.sheet;
-  const cur = s.id ? (state.food[ui.date] || []).find((i) => i.id === s.id) : null;
-  const v = cur || { name: '', meal: guessMeal(), kcal: '', p: '', f: '', c: '' };
-  s.recent = cur ? [] : recentFoods();
-  return `<h3>${cur ? 'Редагувати запис' : 'Додати їжу'}</h3>
-    ${s.recent.length ? `<div class="hint">Нещодавні:</div><div class="chips">${s.recent.map((r, i) => `<button class="chip" data-a="fill" data-i="${i}">${esc(r.name)}</button>`).join('')}</div>` : ''}
-    ${field('Назва', 'f-name', v.name, { ph: 'Напр. Вівсянка з бананом' })}
-    <div class="field"><label for="f-meal">Прийом їжі</label><select id="f-meal">${MEALS.map(([id, t]) => `<option value="${id}" ${v.meal === id ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
-    <div class="grid2">
-      ${field('Калорії, ккал', 'f-kcal', v.kcal, { inputmode: 'decimal', ph: 'авто з БЖУ' })}
-      ${field('Білки, г', 'f-p', v.p, { inputmode: 'decimal' })}
-      ${field('Жири, г', 'f-f', v.f, { inputmode: 'decimal' })}
-      ${field('Вуглеводи, г', 'f-c', v.c, { inputmode: 'decimal' })}
-    </div>
-    <div class="hint" style="margin-bottom:12px">Якщо калорії не вказано — порахуємо з БЖУ (4/9/4 ккал на грам).</div>
-    <button class="btn" data-a="save-food">Зберегти</button>
-    ${cur ? '<button class="btn danger" data-a="delete-food">Видалити</button>' : ''}`;
+
+/* --- product sheet (slider + manual input) --- */
+function productSheet() {
+  const p = prodById(ui.sheet.id), c = catById(p.cat);
+  const cur = dayFood()[p.id] || 0, mx = maxAmt(p);
+  const step = p.unit === 'pcs' ? 1 : (mx <= 60 ? 1 : 5);
+  const smax = Math.max(mx, cur, step);
+  ui.sheet.amt = cur;
+  const u = unitLbl(p);
+  return `<div class="row" style="justify-content:flex-start;gap:10px"><span class="badge" style="background:${c.color}">${c.letter}</span><h3 style="margin:0">${esc(p.name)}</h3></div>
+    <div class="hint" style="margin-top:4px">${esc(c.name)}${p.note ? ' · ' + esc(p.note) : ''} · ${r1(p.kcal)} ккал на ${p.unit === 'pcs' ? '1 шт' : '100 г'}</div>
+    <div class="center" style="margin:14px 0 6px"><span class="big" id="p-big">${cur}</span> <span class="hint">${u}</span></div>
+    <input type="range" id="p-range" class="slider" min="0" max="${smax}" step="${step}" value="${Math.min(cur, smax)}">
+    <div class="row hint"><span>0</span><span>макс. ${fmt(mx)} ${u}</span></div>
+    <div class="field" style="margin-top:12px"><label for="p-num">Або введіть вручну (${u})</label>
+      <input id="p-num" type="text" inputmode="decimal" value="${cur || ''}" placeholder="0"></div>
+    <div class="card" id="p-info"></div>
+    <button class="btn" data-a="save-product">Зберегти</button>
+    ${cur > 0 ? '<button class="btn danger" data-a="clear-product">Прибрати зі списку</button>' : ''}
+    ${p.custom ? '<button class="btn danger" data-a="delete-custom">Видалити продукт</button>' : ''}`;
 }
-function guessMeal() {
-  const h = new Date().getHours();
-  return h < 11 ? 'breakfast' : h < 16 ? 'lunch' : h < 21 ? 'dinner' : 'snack';
+function setProductAmt(v, from) {
+  const a = Math.max(0, v);
+  ui.sheet.amt = a;
+  if (from !== 'range') $('#p-range').value = a;
+  if (from !== 'num') $('#p-num').value = a || '';
+  updateProductInfo();
 }
-function saveFood() {
-  const g = (n) => $('#f-' + n).value;
-  const name = g('name').trim();
-  if (!name) return toast('Вкажіть назву');
-  const p = num(g('p')), f = num(g('f')), c = num(g('c'));
-  const kcal = g('kcal').trim() === '' ? Math.round(4 * p + 9 * f + 4 * c) : num(g('kcal'));
-  if (kcal <= 0 && p + f + c <= 0) return toast('Вкажіть калорії або БЖУ');
-  const item = { id: ui.sheet.id || uid(), name, meal: g('meal'), kcal: Math.round(kcal), p: r1(p), f: r1(f), c: r1(c) };
-  const arr = state.food[ui.date] || (state.food[ui.date] = []);
-  const i = arr.findIndex((x) => x.id === item.id);
-  if (i >= 0) arr[i] = item; else arr.push(item);
+function updateProductInfo() {
+  const s = ui.sheet, p = prodById(s.id), c = catById(p.cat), a = s.amt;
+  const left = catBudget(c) - catUsed(c, p.id) - kcalOf(p, a);
+  $('#p-big').textContent = String(r1(a));
+  $('#p-info').innerHTML = `<div class="grid3">
+      <div class="stat"><b>${fmt(kcalOf(p, a))}</b><span>ккал</span></div>
+      <div class="stat"><b>${r1(macroOf(p, a, 'p'))}</b><span>білки, г</span></div>
+      <div class="stat"><b>${r1(macroOf(p, a, 'f'))} / ${r1(macroOf(p, a, 'c'))}</b><span>жири / вугл., г</span></div></div>
+    <div class="hint center${left < 0 ? ' bad' : ''}" style="margin-top:10px">${left >= 0
+      ? `У категорії ${c.letter} залишиться ${fmt(left)} ккал`
+      : `Понад ліміт категорії ${c.letter} на ${fmt(-left)} ккал`}</div>`;
+}
+function saveProduct() {
+  const a = Math.round(ui.sheet.amt * 10) / 10;
+  const day = state.food[ui.date] || (state.food[ui.date] = {});
+  if (a > 0) day[ui.sheet.id] = a; else delete day[ui.sheet.id];
+  if (!Object.keys(day).length) delete state.food[ui.date];
   persist(); closeSheet(); render(); haptic();
+}
+
+/* --- category budgets sheet --- */
+function catsSheet() {
+  return `<h3>Калорії по категоріях</h3>
+    <div class="hint" style="margin-bottom:10px">Вкажіть, скільки ккал на добу виділяєте на кожну категорію — додаток сам порахує, скільки грамів кожного продукту можна з’їсти.</div>
+    ${CATS.map((c) => `<div class="catset"><span class="badge" style="background:${c.color}">${c.letter}</span>
+      <label for="c-${c.id}">${esc(c.name)}</label>
+      <input id="c-${c.id}" data-catin="${c.id}" type="text" inputmode="numeric" value="${catBudget(c)}"></div>`).join('')}
+    <div class="row" style="margin:12px 0"><b>Разом на добу</b><b id="c-sum"></b></div>
+    <div class="field"><label for="c-total">Розподілити пропорційно на загальну ціль, ккал</label>
+      <div class="inline"><input id="c-total" type="text" inputmode="numeric" placeholder="напр. 2200">
+        <button class="btn small ghost" data-a="spread-cats">Розподілити</button></div></div>
+    <button class="btn" data-a="save-cats">Зберегти</button>`;
+}
+function readCatInputs() {
+  const v = {}; for (const c of CATS) v[c.id] = Math.max(0, Math.round(num($('#c-' + c.id).value)));
+  return v;
+}
+function updateCatSum() {
+  const v = readCatInputs();
+  $('#c-sum').textContent = fmt(CATS.reduce((s, c) => s + v[c.id], 0)) + ' ккал';
+}
+
+/* --- custom product sheet --- */
+function customSheet() {
+  const c = catById(ui.sheet.cat);
+  return `<h3>Новий продукт · ${c.letter}</h3>
+    ${field('Назва', 'u-name', '', { ph: 'Напр. Гречка' })}
+    <div class="field"><label for="u-unit">Одиниця</label><select id="u-unit"><option value="g">Грами (г)</option><option value="pcs">Штуки (шт)</option></select></div>
+    <div class="grid2">
+      ${field('Ккал на 100 г / 1 шт', 'u-kcal', '', { inputmode: 'decimal' })}
+      ${field('Білки, г', 'u-p', '', { inputmode: 'decimal' })}
+      ${field('Жири, г', 'u-f', '', { inputmode: 'decimal' })}
+      ${field('Вуглеводи, г', 'u-c', '', { inputmode: 'decimal' })}
+    </div>
+    <div class="hint" style="margin-bottom:12px">Значення вказуються на 100 г (або на 1 шт, якщо обрано штуки). БЖУ можна не заповнювати.</div>
+    <button class="btn" data-a="save-custom">Додати</button>`;
+}
+function saveCustom() {
+  const g = (n) => $('#u-' + n).value;
+  const name = g('name').trim(), kcal = num(g('kcal'));
+  if (!name) return toast('Вкажіть назву');
+  if (kcal <= 0) return toast('Вкажіть калорійність');
+  state.customProducts.push({ id: 'u_' + uid(), cat: ui.sheet.cat, name, unit: g('unit'), kcal, p: num(g('p')), f: num(g('f')), c: num(g('c')), custom: true });
+  persist(); closeSheet(); render(); toast('Продукт додано ✓');
 }
 
 /* ---------- STEPS ---------- */
@@ -305,7 +467,7 @@ function derivedHtml() {
       <div class="stat"><b>${fmt(c.bmr)}</b><span>базовий обмін</span></div>
       <div class="stat"><b>${fmt(c.tdee)}</b><span>витрати/день</span></div></div>
     <div class="hint" style="margin:12px 0 8px">Рекомендація під вашу ціль: <b style="color:var(--text)">${fmt(c.kcal)} ккал</b> · Б ${c.p} · Ж ${c.f} · В ${c.c}</div>
-    <button class="btn ghost" data-a="apply-goals">Застосувати до моїх цілей</button>`;
+    <button class="btn ghost" data-a="apply-goals">Застосувати (ккал розподіляться по категоріях)</button>`;
 }
 function weightChartHtml() {
   const keys = Object.keys(state.weights).sort().slice(-30);
@@ -346,8 +508,8 @@ function profileView() {
   <div class="card" id="derived">${derivedHtml()}</div>
   <div class="card"><h3>Динаміка ваги</h3><div id="wchart">${weightChartHtml()}</div></div>
   <div class="card"><h3>Мої щоденні цілі</h3>
+    <div class="hint" style="margin-bottom:10px">Калорії задаються по категоріях у розділі «Раціон».</div>
     <div class="grid2">
-      ${bindField('Калорії, ккал', 'goals.kcal', g.kcal, { inputmode: 'numeric' })}
       ${bindField('Кроки', 'goals.steps', g.steps, { inputmode: 'numeric' })}
       ${bindField('Білки, г', 'goals.p', g.p)}
       ${bindField('Жири, г', 'goals.f', g.f)}
@@ -368,13 +530,16 @@ function onBind(el) {
 }
 
 /* ---------- sheet / toast ---------- */
-function openSheet(type, id) { ui.sheet = { type, id }; renderSheet(); }
+function openSheet(type, id, extra) { ui.sheet = { type, id, ...extra }; renderSheet(); }
 function closeSheet() { ui.sheet = null; renderSheet(); }
 function renderSheet() {
   const el = $('#sheet');
   if (!ui.sheet) { el.innerHTML = ''; return; }
-  const body = ui.sheet.type === 'food' ? foodSheet() : workoutSheet();
+  const builders = { product: productSheet, cats: catsSheet, custom: customSheet, workout: workoutSheet };
+  const body = builders[ui.sheet.type]();
   el.innerHTML = `<div class="overlay" data-a="close-sheet"></div><div class="sheet"><div class="grab"></div>${body}</div>`;
+  if (ui.sheet.type === 'product') updateProductInfo();
+  if (ui.sheet.type === 'cats') updateCatSum();
 }
 let toastTimer;
 function toast(msg) {
@@ -395,17 +560,31 @@ const actions = {
   prev: () => { ui.date = shift(ui.date, -1); render(); },
   next: () => { if (ui.date < todayKey()) { ui.date = shift(ui.date, 1); render(); } },
   today: () => { ui.date = todayKey(); render(); },
-  'add-food': () => openSheet('food'),
-  'edit-food': (el) => openSheet('food', el.dataset.id),
-  'save-food': saveFood,
-  'delete-food': () => {
-    state.food[ui.date] = (state.food[ui.date] || []).filter((i) => i.id !== ui.sheet.id);
-    if (!state.food[ui.date].length) delete state.food[ui.date];
-    persist(); closeSheet(); render();
+  'toggle-cat': (el) => { ui.collapsed[el.dataset.id] = !ui.collapsed[el.dataset.id]; render(); },
+  'open-product': (el) => openSheet('product', el.dataset.id),
+  'save-product': saveProduct,
+  'clear-product': () => { ui.sheet.amt = 0; saveProduct(); },
+  'cats-settings': () => openSheet('cats'),
+  'spread-cats': () => {
+    const total = Math.round(num($('#c-total').value));
+    if (total <= 0) return toast('Вкажіть загальну ціль');
+    const out = spreadKcal(readCatInputs(), total);
+    for (const c of CATS) $('#c-' + c.id).value = out[c.id];
+    updateCatSum();
   },
-  fill: (el) => {
-    const r = ui.sheet.recent[+el.dataset.i]; if (!r) return;
-    $('#f-name').value = r.name; $('#f-kcal').value = r.kcal; $('#f-p').value = r.p; $('#f-f').value = r.f; $('#f-c').value = r.c;
+  'save-cats': () => {
+    const v = readCatInputs();
+    Object.assign(state.catKcal, v);
+    state.goals.kcal = CATS.reduce((s, c) => s + v[c.id], 0);
+    persist(); closeSheet(); render(); toast('Збережено ✓');
+  },
+  'add-custom': (el) => openSheet('custom', null, { cat: el.dataset.cat }),
+  'save-custom': saveCustom,
+  'delete-custom': () => {
+    const id = ui.sheet.id;
+    state.customProducts = state.customProducts.filter((p) => p.id !== id);
+    for (const k of Object.keys(state.food)) { delete state.food[k][id]; if (!Object.keys(state.food[k]).length) delete state.food[k]; }
+    persist(); closeSheet(); render();
   },
   'add-workout': () => openSheet('workout'),
   'edit-workout': (el) => openSheet('workout', el.dataset.id),
@@ -420,7 +599,9 @@ const actions = {
   'add-steps': (el) => setSteps((state.steps[ui.date] || 0) + num(el.dataset.n)),
   'apply-goals': () => {
     const c = calc(); if (!c) return;
-    Object.assign(state.goals, { kcal: c.kcal, p: c.p, f: c.f, c: c.c });
+    Object.assign(state.goals, { p: c.p, f: c.f, c: c.c });
+    state.catKcal = spreadKcal(state.catKcal, c.kcal);
+    state.goals.kcal = c.kcal;
     persist(); render(); toast('Цілі оновлено ✓'); haptic('medium');
   },
   reset: () => {
@@ -433,7 +614,13 @@ document.addEventListener('click', (e) => {
   const el = e.target.closest('[data-a]');
   if (el && actions[el.dataset.a]) actions[el.dataset.a](el);
 });
-const onInput = (e) => { if (e.target.dataset && e.target.dataset.bind) onBind(e.target); };
+const onInput = (e) => {
+  const t = e.target;
+  if (t.dataset && t.dataset.bind) onBind(t);
+  else if (t.id === 'p-range') setProductAmt(num(t.value), 'range');
+  else if (t.id === 'p-num') setProductAmt(num(t.value), 'num');
+  else if (t.dataset && t.dataset.catin !== undefined) updateCatSum();
+};
 document.addEventListener('input', onInput);
 document.addEventListener('change', onInput);
 document.addEventListener('keydown', (e) => {

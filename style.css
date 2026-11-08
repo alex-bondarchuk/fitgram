@@ -114,3 +114,27 @@ h3 { font-size: 17px; margin: 0 0 12px; }
   background: #222; color: #fff; padding: 9px 16px; border-radius: 99px; font-size: 14px; opacity: 0; pointer-events: none;
   transition: .25s; z-index: 20; max-width: 90%; text-align: center; }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* categories & products */
+.center { text-align: center; }
+.badge { display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 34px; flex: none;
+  border-radius: 10px; color: #fff; font-weight: 700; font-size: 17px; }
+.bad { color: var(--danger) !important; }
+.cat { background: var(--card); border-radius: 16px; padding: 6px 6px 8px; margin-bottom: 12px; }
+.cat-head { display: flex; align-items: center; gap: 10px; width: 100%; background: none; border: 0; padding: 8px 10px; cursor: pointer; text-align: left; }
+.cat-info { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.cat-name { font-weight: 600; }
+.cat-info .sub, .pname .sub { font-size: 12px; color: var(--hint); }
+.chev { color: var(--hint); }
+.track.thin { height: 5px; margin: 0 10px 6px; }
+.prow { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; background: var(--bg);
+  border: 1px dashed var(--line); border-radius: 12px; padding: 10px 12px; margin-top: 6px; text-align: left; cursor: pointer; }
+.pname { display: flex; flex-direction: column; min-width: 0; }
+.pname .name { font-weight: 600; }
+.amt { white-space: nowrap; font-size: 14px; color: var(--hint); align-self: flex-start; }
+.amt.on { color: var(--text); font-weight: 700; }
+.addp { width: 100%; background: none; border: 0; color: var(--btn); padding: 10px; margin-top: 4px; cursor: pointer; font-size: 14px; }
+.slider { width: 100%; height: 36px; accent-color: var(--btn); }
+.catset { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.catset label { flex: 1; font-size: 14px; }
+.catset input { width: 90px; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 9px 10px; font-size: 16px; text-align: right; }
