@@ -148,3 +148,12 @@ h3 { font-size: 17px; margin: 0 0 12px; }
 .menu-card .sub { font-size: 13px; color: var(--hint); }
 .field textarea { resize: none; font-size: 14px; line-height: 1.4; }
 #tabs button { font-size: 10.5px; }
+
+/* measurements */
+.menu-card.wide { grid-column: 1 / -1; min-height: 90px; }
+.mt { width: 100%; border-collapse: collapse; font-size: 13px; }
+.mt th { color: var(--hint); font-weight: 500; font-size: 11px; text-align: right; padding: 0 0 6px; }
+.mt td { text-align: right; padding: 7px 0; border-top: 1px solid var(--line); }
+.mt td:first-child, .mt th:first-child { text-align: left; }
+.mt tr[data-a] { cursor: pointer; }
+#tabs button { font-size: 10px; padding: 0 1px; }

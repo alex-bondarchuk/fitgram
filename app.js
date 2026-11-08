@@ -86,7 +86,7 @@ const defaults = () => ({
   goals: { kcal: CATS.reduce((s, c) => s + c.def, 0), p: 140, f: 70, c: 250, steps: 10000 },
   catKcal: Object.fromEntries(CATS.map((c) => [c.id, c.def])),
   customProducts: [],
-  food: {}, steps: {}, workouts: {}, weights: {},
+  food: {}, steps: {}, workouts: {}, weights: {}, measures: {},
 });
 let state = defaults();
 
@@ -148,7 +148,7 @@ function persist() {
 }
 
 /* ---------- constants ---------- */
-const TABS = [['home', '🏠', 'Головна'], ['food', '🍽', 'Харчування'], ['steps', '👟', 'Кроки'], ['workout', '🏋️', 'Тренування'], ['profile', '👤', 'Профіль']];
+const TABS = [['home', '🏠', 'Головна'], ['food', '🍽', 'Харчування'], ['steps', '👟', 'Кроки'], ['workout', '🏋️', 'Тренування'], ['measure', '📏', 'Заміри'], ['profile', '👤', 'Профіль']];
 const ACTIVITY = [[1.2, 'Сидячий (без тренувань)'], [1.375, 'Легка (1–3 тренування/тиждень)'], [1.55, 'Помірна (3–5 тренувань/тиждень)'],
   [1.725, 'Висока (6–7 тренувань/тиждень)'], [1.9, 'Дуже висока (фізична робота + спорт)']];
 const GOALS = [['lose', 'Схуднути'], ['maintain', 'Підтримувати вагу'], ['gain', 'Набрати масу']];
@@ -448,6 +448,59 @@ function saveWorkout() {
   persist(); closeSheet(); render(); haptic();
 }
 
+/* ---------- MEASUREMENTS (Заміри) ---------- */
+const MEASURES = [['weight', 'Вага', 'кг'], ['arm', 'Плече', 'см'], ['chest', 'Груди', 'см'], ['waist', 'Талія', 'см'], ['hips', 'Стегна', 'см']];
+const mGet = (k, d) => (k === 'weight' ? state.weights[d] : (state.measures[d] || {})[k]);
+function mSeries(k) {
+  const dates = new Set(Object.keys(state.weights).concat(Object.keys(state.measures)));
+  return [...dates].sort().map((d) => ({ d, v: mGet(k, d) })).filter((p) => p.v > 0);
+}
+function mSet(k, d, v) {
+  if (k === 'weight') {
+    if (v > 0) state.weights[d] = v; else delete state.weights[d];
+    const last = Object.keys(state.weights).sort().pop();
+    if (last) state.profile.weight = state.weights[last];
+    return;
+  }
+  const rec = state.measures[d] || (state.measures[d] = {});
+  if (v > 0) rec[k] = v; else delete rec[k];
+  if (!Object.keys(rec).length) delete state.measures[d];
+}
+function measureView() {
+  const prior = (k) => { const ser = mSeries(k).filter((p) => p.d < ui.date); return ser.length ? ser[ser.length - 1].v : ''; };
+  let html = `<h2>Заміри</h2>${dateNav()}
+  <div class="card"><h3>Записати заміри</h3><div class="grid2">
+    ${MEASURES.map(([k, label, unit]) => field(`${label}, ${unit}`, 'm-' + k, mGet(k, ui.date) || '', { inputmode: 'decimal', ph: prior(k) ? String(prior(k)) : '' })).join('')}
+  </div><button class="btn" data-a="save-measures">Зберегти заміри</button></div>`;
+  for (const [k, label, unit] of MEASURES) {
+    const ser = mSeries(k);
+    if (!ser.length) continue;
+    const last = ser[ser.length - 1], prev = ser[ser.length - 2];
+    const d = prev ? last.v - prev.v : 0;
+    html += `<div class="card"><div class="row"><b>${label}</b><span class="hint">${parseKey(last.d).toLocaleDateString('uk-UA', { day: 'numeric', month: 'short' })}</span></div>
+      <div class="row"><span class="big" style="font-size:28px">${r1(last.v)} <span class="hint" style="font-size:15px">${unit}</span></span>
+        <span class="hint">${prev ? (d > 0 ? '+' : '') + r1(d) + ' ' + unit + ' від попереднього' : ''}</span></div>
+      ${ser.length > 1 ? lineChart(ser.slice(-30), unit) : ''}</div>`;
+  }
+  const dates = [...new Set(Object.keys(state.weights).concat(Object.keys(state.measures)))].sort().reverse().slice(0, 10);
+  if (dates.length) {
+    html += `<div class="card"><h3>Історія</h3><table class="mt"><tr><th></th>${MEASURES.map(([, l]) => `<th>${l}</th>`).join('')}</tr>
+      ${dates.map((d) => `<tr data-a="goto-date" data-d="${d}"><td>${parseKey(d).toLocaleDateString('uk-UA', { day: 'numeric', month: 'short' })}</td>
+        ${MEASURES.map(([k]) => `<td>${mGet(k, d) ? r1(mGet(k, d)) : '—'}</td>`).join('')}</tr>`).join('')}</table></div>`;
+  }
+  return html;
+}
+function saveMeasures() {
+  let n = 0;
+  for (const [k] of MEASURES) {
+    const raw = $('#m-' + k).value.trim();
+    const v = raw === '' ? 0 : num(raw);
+    if (v > 0) n++;
+    mSet(k, ui.date, v);
+  }
+  persist(); render(); toast(n ? 'Заміри збережено ✓' : 'Заміри очищено'); haptic();
+}
+
 /* ---------- PROFILE ---------- */
 function calc() {
   const p = state.profile;
@@ -472,18 +525,21 @@ function derivedHtml() {
     <div class="hint" style="margin:12px 0 8px">Рекомендація під вашу ціль: <b style="color:var(--text)">${fmt(c.kcal)} ккал</b> · Б ${c.p} · Ж ${c.f} · В ${c.c}</div>
     <button class="btn ghost" data-a="apply-goals">Застосувати (ккал розподіляться по категоріях)</button>`;
 }
-function weightChartHtml() {
-  const keys = Object.keys(state.weights).sort().slice(-30);
-  if (keys.length < 2) return '<div class="hint">Вага записується разом зі зміною параметра. Після кількох записів тут з’явиться графік.</div>';
-  const vals = keys.map((k) => state.weights[k]);
+function lineChart(series, unit) {
+  const vals = series.map((p) => p.v);
   const min = Math.min(...vals), max = Math.max(...vals), span = max - min || 1;
-  const W = 300, H = 90, P = 8;
+  const W = 300, H = 80, P = 8;
   const pts = vals.map((v, i) => `${P + (i / (vals.length - 1)) * (W - 2 * P)},${H - P - ((v - min) / span) * (H - 2 * P)}`).join(' ');
   const diff = vals[vals.length - 1] - vals[0];
-  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:90px"><polyline points="${pts}" fill="none" stroke="var(--btn)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/></svg>
-    <div class="row hint"><span>${parseKey(keys[0]).toLocaleDateString('uk-UA', { day: 'numeric', month: 'short' })}: ${vals[0]} кг</span>
-    <span>${diff > 0 ? '+' : ''}${r1(diff)} кг</span>
-    <span>${parseKey(keys[keys.length - 1]).toLocaleDateString('uk-UA', { day: 'numeric', month: 'short' })}: ${vals[vals.length - 1]} кг</span></div>`;
+  const dl = (k) => parseKey(k).toLocaleDateString('uk-UA', { day: 'numeric', month: 'short' });
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:80px"><polyline points="${pts}" fill="none" stroke="var(--btn)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/></svg>
+    <div class="row hint"><span>${dl(series[0].d)}: ${r1(vals[0])} ${unit}</span><span>${diff > 0 ? '+' : ''}${r1(diff)} ${unit}</span>
+    <span>${dl(series[series.length - 1].d)}: ${r1(vals[vals.length - 1])} ${unit}</span></div>`;
+}
+function weightChartHtml() {
+  const ser = Object.keys(state.weights).sort().slice(-30).map((d) => ({ d, v: state.weights[d] }));
+  if (ser.length < 2) return '<div class="hint">Після кількох записів ваги тут з’явиться графік. Вагу можна записувати в розділі «Заміри».</div>';
+  return lineChart(ser, 'кг');
 }
 function bindField(label, path, value, opts = {}) {
   const { numeric = true, inputmode = 'decimal' } = opts;
@@ -538,14 +594,16 @@ function homeView() {
   const steps = state.steps[ui.date] || 0, goal = state.goals.steps || 10000;
   const wk = (state.workouts[ui.date] || []).length;
   const w = state.profile.weight;
-  const card = (id, ic, title, line) => `<button class="menu-card" data-a="tab" data-id="${id}">
+  const mCount = MEASURES.filter(([k]) => mGet(k, ui.date) > 0).length;
+  const card = (id, ic, title, line, cls = '') => `<button class="menu-card ${cls}" data-a="tab" data-id="${id}">
     <span class="mic">${ic}</span><b>${title}</b><span class="sub">${line}</span></button>`;
   return `<h2>${state.profile.name ? 'Привіт, ' + esc(state.profile.name) + '!' : 'FitGram'}</h2>${dateNav()}
   <div class="menu">
     ${card('food', '🍽', 'Харчування', `${fmt(t.kcal)} / ${fmt(budget)} ккал`)}
     ${card('steps', '👟', 'Кроки', `${fmt(steps)} / ${fmt(goal)}`)}
     ${card('workout', '🏋️', 'Тренування', wk ? `записано: ${wk}` : 'ще немає')}
-    ${card('profile', '👤', 'Профіль', w ? `${r1(w)} кг` : 'параметри')}
+    ${card('measure', '📏', 'Заміри', mCount ? `заповнено: ${mCount} з 5` : 'ще немає')}
+    ${card('profile', '👤', 'Профіль', w ? `${r1(w)} кг` : 'параметри', 'wide')}
   </div>
   <button class="btn" data-a="send-report" style="margin-top:14px">📤 Відправити звіт</button>
   <div class="hint center" style="margin-top:8px">Звіт за ${esc(dateLabel(ui.date).toLowerCase())} надійде в чат із ботом</div>`;
@@ -566,6 +624,7 @@ function buildReport() {
   }
   if (!any) L.push('Нічого не записано');
   const steps = state.steps[ui.date] || 0, goal = state.goals.steps || 10000;
+  const mm = MEASURES.filter(([k]) => mGet(k, ui.date) > 0);
   L.push('', '👟 Кроки', `${fmt(steps)} / ${fmt(goal)} (${Math.round((steps / goal) * 100)}%)`, '', '🏋️ Тренування');
   const ws = state.workouts[ui.date] || [];
   if (!ws.length) L.push('Тренувань не було');
@@ -574,6 +633,7 @@ function buildReport() {
     else if (w.place === 'gym') L.push(`🏋️ У залі: повторень ${w.reps}`);
     else L.push(`⭐ ${w.type || 'Тренування'}: ${w.min || 0} хв`);
   }
+  if (mm.length) L.push('', '📏 Заміри', ...mm.map(([k, l, u]) => `${l}: ${r1(mGet(k, ui.date))} ${u}`));
   return L.join('\n');
 }
 async function sendReport() {
@@ -623,7 +683,7 @@ function toast(msg) {
 
 /* ---------- render ---------- */
 function render() {
-  const views = { home: homeView, food: foodView, steps: stepsView, workout: workoutView, profile: profileView };
+  const views = { home: homeView, food: foodView, steps: stepsView, workout: workoutView, measure: measureView, profile: profileView };
   $('#view').innerHTML = views[ui.tab]();
   $('#tabs').innerHTML = TABS.map(([id, ic, t]) => `<button data-a="tab" data-id="${id}" class="${ui.tab === id ? 'on' : ''}"><span class="ic">${ic}</span>${t}</button>`).join('');
 }
@@ -660,6 +720,8 @@ const actions = {
     for (const k of Object.keys(state.food)) { delete state.food[k][id]; if (!Object.keys(state.food[k]).length) delete state.food[k]; }
     persist(); closeSheet(); render();
   },
+  'save-measures': saveMeasures,
+  'goto-date': (el) => { ui.date = el.dataset.d; render(); window.scrollTo(0, 0); },
   'send-report': sendReport,
   'copy-report': () => {
     const ta = $('#r-text'); ta.select(); ta.setSelectionRange(0, 99999);
