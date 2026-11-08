@@ -149,8 +149,6 @@ function persist() {
 
 /* ---------- constants ---------- */
 const TABS = [['food', '🍽', 'Харчування'], ['steps', '👟', 'Кроки'], ['workout', '🏋️', 'Тренування'], ['profile', '👤', 'Профіль']];
-const WTYPES = { 'Силове': ['🏋️', 5], 'Кардіо': ['🏃', 7], 'Біг': ['👟', 9.8], 'Ходьба': ['🚶', 3.5], 'Велосипед': ['🚴', 7.5],
-  'Плавання': ['🏊', 7], 'Йога': ['🧘', 3], 'HIIT': ['🔥', 10], 'Інше': ['⭐', 5] };
 const ACTIVITY = [[1.2, 'Сидячий (без тренувань)'], [1.375, 'Легка (1–3 тренування/тиждень)'], [1.55, 'Помірна (3–5 тренувань/тиждень)'],
   [1.725, 'Висока (6–7 тренувань/тиждень)'], [1.9, 'Дуже висока (фізична робота + спорт)']];
 const GOALS = [['lose', 'Схуднути'], ['maintain', 'Підтримувати вагу'], ['gain', 'Набрати масу']];
@@ -278,7 +276,7 @@ function productSheet() {
       <input id="p-num" type="text" inputmode="decimal" value="${cur || ''}" placeholder="0"></div>
     <div class="card" id="p-info"></div>
     <button class="btn" data-a="save-product">Зберегти</button>
-    ${cur > 0 ? '<button class="btn danger" data-a="clear-product">Прибрати зі списку</button>' : ''}
+    ${cur > 0 ? '<button class="btn danger" data-a="clear-product">Скинути</button>' : ''}
     ${p.custom ? '<button class="btn danger" data-a="delete-custom">Видалити продукт</button>' : ''}`;
 }
 function setProductAmt(v, from) {
@@ -380,9 +378,6 @@ function stepsView() {
     <h3>Записати кроки</h3>
     <div class="inline"><input id="stepsInput" type="text" inputmode="numeric" placeholder="Кількість кроків" value="${s || ''}">
       <button class="btn small" data-a="save-steps">Зберегти</button></div>
-    <div class="chips"><button class="chip" data-a="add-steps" data-n="1000">+1 000</button>
-      <button class="chip" data-a="add-steps" data-n="2500">+2 500</button>
-      <button class="chip" data-a="add-steps" data-n="5000">+5 000</button></div>
   </div>
   <div class="card">
     <div class="row"><h3 style="margin:0">Останні 7 днів</h3><span class="hint">середнє ${fmt(avg)}</span></div>
@@ -400,45 +395,53 @@ function setSteps(n) {
 }
 
 /* ---------- WORKOUTS ---------- */
+const PLACES = { home: ['🏠', 'Домашнє тренування'], gym: ['🏋️', 'Тренування в залі'] };
+const workoutReps = (w) => (w.place === 'home' ? (w.rounds || 0) * (w.reps || 0) : (w.reps || 0));
 function workoutView() {
   const list = state.workouts[ui.date] || [];
   const days = []; for (let i = 6; i >= 0; i--) days.push(shift(ui.date, -i));
   const all = days.flatMap((d) => state.workouts[d] || []);
-  const wMin = all.reduce((a, w) => a + w.min, 0), wKcal = all.reduce((a, w) => a + w.kcal, 0);
+  const reps = all.reduce((a, w) => a + workoutReps(w), 0);
+  const home = all.filter((w) => w.place === 'home').length, gym = all.filter((w) => w.place === 'gym').length;
   let html = `<h2>Тренування</h2>${dateNav()}
   <div class="card"><div class="hint" style="margin-bottom:8px">За останні 7 днів</div>
     <div class="grid3"><div class="stat"><b>${all.length}</b><span>тренувань</span></div>
-      <div class="stat"><b>${fmt(wMin)}</b><span>хвилин</span></div>
-      <div class="stat"><b>${fmt(wKcal)}</b><span>ккал</span></div></div></div>
+      <div class="stat"><b>${fmt(reps)}</b><span>повторень</span></div>
+      <div class="stat"><b>${home} / ${gym}</b><span>вдома / у залі</span></div></div></div>
   <button class="btn" data-a="add-workout">+ Записати тренування</button>`;
   if (!list.length) html += `<div class="empty">У цей день тренувань немає.<br>Час порухатись 💪</div>`;
   else html += `<div class="meal-title" style="margin-top:16px"><span>${esc(dateLabel(ui.date))}</span></div>` +
-    list.map((w) => `<button class="item" data-a="edit-workout" data-id="${w.id}">
-      <div><div class="name">${(WTYPES[w.type] || WTYPES['Інше'])[0]} ${esc(w.type)}</div>
-      <div class="sub">${w.min} хв${w.note ? ' · ' + esc(w.note) : ''}</div></div>
-      <div class="kc">${w.kcal ? fmt(w.kcal) + ' ккал' : ''}</div></button>`).join('');
+    list.map((w) => {
+      const pl = PLACES[w.place];
+      const title = pl ? `${pl[0]} ${pl[1]}` : `⭐ ${esc(w.type || 'Тренування')}`;
+      const sub = w.place === 'home' ? `Кругів: ${w.rounds} · Повторень: ${w.reps}`
+        : w.place === 'gym' ? `Повторень: ${w.reps}` : `${w.min || 0} хв${w.note ? ' · ' + esc(w.note) : ''}`;
+      return `<button class="item" data-a="edit-workout" data-id="${w.id}">
+        <div><div class="name">${title}</div><div class="sub">${sub}</div></div>
+        <div class="kc">${pl ? workoutReps(w) + ' повт.' : (w.kcal ? fmt(w.kcal) + ' ккал' : '')}</div></button>`;
+    }).join('');
   return html;
 }
 function workoutSheet() {
   const s = ui.sheet;
   const cur = s.id ? (state.workouts[ui.date] || []).find((w) => w.id === s.id) : null;
-  const v = cur || { type: 'Силове', min: '', kcal: '', note: '' };
+  const place = cur && cur.place ? cur.place : 'home';
   return `<h3>${cur ? 'Редагувати тренування' : 'Нове тренування'}</h3>
-    <div class="field"><label for="w-type">Тип</label><select id="w-type">${Object.keys(WTYPES).map((t) => `<option ${v.type === t ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
-    <div class="grid2">${field('Тривалість, хв', 'w-min', v.min, { inputmode: 'numeric' })}
-      ${field('Калорії, ккал', 'w-kcal', v.kcal, { inputmode: 'numeric', ph: 'авто' })}</div>
-    <div class="field"><label for="w-note">Нотатка (вправи, вага, підходи)</label>
-      <textarea id="w-note" rows="3" placeholder="Напр. присідання 4×8×80 кг">${esc(v.note)}</textarea></div>
-    <div class="hint" style="margin-bottom:12px">Якщо калорії не вказано — оцінимо за типом, часом і вашою вагою.</div>
+    <div class="field"><label for="w-place">Тип тренування</label>
+      <select id="w-place"><option value="home" ${place === 'home' ? 'selected' : ''}>Домашнє</option>
+        <option value="gym" ${place === 'gym' ? 'selected' : ''}>У залі</option></select></div>
+    <div id="w-rounds-wrap" style="${place === 'home' ? '' : 'display:none'}">${field('Кількість кругів', 'w-rounds', (cur && cur.rounds) || '', { inputmode: 'numeric' })}</div>
+    ${field('Кількість повторень', 'w-reps', (cur && cur.reps) || '', { inputmode: 'numeric' })}
     <button class="btn" data-a="save-workout">Зберегти</button>
     ${cur ? '<button class="btn danger" data-a="delete-workout">Видалити</button>' : ''}`;
 }
 function saveWorkout() {
-  const type = $('#w-type').value, min = Math.round(num($('#w-min').value));
-  if (min <= 0) return toast('Вкажіть тривалість');
-  let kcal = $('#w-kcal').value.trim() === '' ? 0 : Math.round(num($('#w-kcal').value));
-  if (!kcal) kcal = Math.round(WTYPES[type][1] * (state.profile.weight || 70) * (min / 60));
-  const item = { id: ui.sheet.id || uid(), type, min, kcal, note: $('#w-note').value.trim() };
+  const place = $('#w-place').value;
+  const reps = Math.round(num($('#w-reps').value)), rounds = Math.round(num($('#w-rounds').value));
+  if (place === 'home' && rounds <= 0) return toast('Вкажіть кількість кругів');
+  if (reps <= 0) return toast('Вкажіть кількість повторень');
+  const item = { id: ui.sheet.id || uid(), place, reps };
+  if (place === 'home') item.rounds = rounds;
   const arr = state.workouts[ui.date] || (state.workouts[ui.date] = []);
   const i = arr.findIndex((x) => x.id === item.id);
   if (i >= 0) arr[i] = item; else arr.push(item);
@@ -596,7 +599,6 @@ const actions = {
   },
   'close-sheet': closeSheet,
   'save-steps': () => setSteps(num($('#stepsInput').value)),
-  'add-steps': (el) => setSteps((state.steps[ui.date] || 0) + num(el.dataset.n)),
   'apply-goals': () => {
     const c = calc(); if (!c) return;
     Object.assign(state.goals, { p: c.p, f: c.f, c: c.c });
@@ -619,6 +621,7 @@ const onInput = (e) => {
   if (t.dataset && t.dataset.bind) onBind(t);
   else if (t.id === 'p-range') setProductAmt(num(t.value), 'range');
   else if (t.id === 'p-num') setProductAmt(num(t.value), 'num');
+  else if (t.id === 'w-place') $('#w-rounds-wrap').style.display = t.value === 'home' ? '' : 'none';
   else if (t.dataset && t.dataset.catin !== undefined) updateCatSum();
 };
 document.addEventListener('input', onInput);
