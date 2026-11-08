@@ -148,12 +148,12 @@ function persist() {
 }
 
 /* ---------- constants ---------- */
-const TABS = [['food', '🍽', 'Харчування'], ['steps', '👟', 'Кроки'], ['workout', '🏋️', 'Тренування'], ['profile', '👤', 'Профіль']];
+const TABS = [['home', '🏠', 'Головна'], ['food', '🍽', 'Харчування'], ['steps', '👟', 'Кроки'], ['workout', '🏋️', 'Тренування'], ['profile', '👤', 'Профіль']];
 const ACTIVITY = [[1.2, 'Сидячий (без тренувань)'], [1.375, 'Легка (1–3 тренування/тиждень)'], [1.55, 'Помірна (3–5 тренувань/тиждень)'],
   [1.725, 'Висока (6–7 тренувань/тиждень)'], [1.9, 'Дуже висока (фізична робота + спорт)']];
 const GOALS = [['lose', 'Схуднути'], ['maintain', 'Підтримувати вагу'], ['gain', 'Набрати масу']];
 
-const ui = { tab: 'food', date: todayKey(), sheet: null, collapsed: {} };
+const ui = { tab: 'home', date: todayKey(), sheet: null, collapsed: {} };
 
 /* ---------- date nav ---------- */
 function dateLabel(k) {
@@ -532,13 +532,84 @@ function onBind(el) {
   if (grp === 'profile') $('#derived').innerHTML = derivedHtml();
 }
 
+/* ---------- HOME & REPORT ---------- */
+function homeView() {
+  const t = dayTotals(), budget = CATS.reduce((s, c) => s + catBudget(c), 0);
+  const steps = state.steps[ui.date] || 0, goal = state.goals.steps || 10000;
+  const wk = (state.workouts[ui.date] || []).length;
+  const w = state.profile.weight;
+  const card = (id, ic, title, line) => `<button class="menu-card" data-a="tab" data-id="${id}">
+    <span class="mic">${ic}</span><b>${title}</b><span class="sub">${line}</span></button>`;
+  return `<h2>${state.profile.name ? 'Привіт, ' + esc(state.profile.name) + '!' : 'FitGram'}</h2>${dateNav()}
+  <div class="menu">
+    ${card('food', '🍽', 'Харчування', `${fmt(t.kcal)} / ${fmt(budget)} ккал`)}
+    ${card('steps', '👟', 'Кроки', `${fmt(steps)} / ${fmt(goal)}`)}
+    ${card('workout', '🏋️', 'Тренування', wk ? `записано: ${wk}` : 'ще немає')}
+    ${card('profile', '👤', 'Профіль', w ? `${r1(w)} кг` : 'параметри')}
+  </div>
+  <button class="btn" data-a="send-report" style="margin-top:14px">📤 Відправити звіт</button>
+  <div class="hint center" style="margin-top:8px">Звіт за ${esc(dateLabel(ui.date).toLowerCase())} надійде в чат із ботом</div>`;
+}
+function buildReport() {
+  const dateStr = parseKey(ui.date).toLocaleDateString('uk-UA', { day: 'numeric', month: 'long', year: 'numeric' });
+  const t = dayTotals(), budget = CATS.reduce((s, c) => s + catBudget(c), 0), day = dayFood();
+  const L = [`📊 Звіт FitGram — ${dateStr}`, '', '🍽 Харчування',
+    `Калорії: ${fmt(t.kcal)} / ${fmt(budget)} ккал`,
+    `Білки ${fmt(t.p)} г · Жири ${fmt(t.f)} г · Вуглеводи ${fmt(t.c)} г`];
+  let any = false;
+  for (const c of CATS) {
+    const items = allProducts().filter((p) => p.cat === c.id && day[p.id] > 0);
+    if (!items.length) continue;
+    any = true;
+    L.push('', `${c.letter} · ${c.name}: ${fmt(catUsed(c))} / ${fmt(catBudget(c))} ккал`);
+    for (const p of items) L.push(`• ${p.name}: ${r1(day[p.id])} ${unitLbl(p)} (${fmt(kcalOf(p, day[p.id]))} ккал)`);
+  }
+  if (!any) L.push('Нічого не записано');
+  const steps = state.steps[ui.date] || 0, goal = state.goals.steps || 10000;
+  L.push('', '👟 Кроки', `${fmt(steps)} / ${fmt(goal)} (${Math.round((steps / goal) * 100)}%)`, '', '🏋️ Тренування');
+  const ws = state.workouts[ui.date] || [];
+  if (!ws.length) L.push('Тренувань не було');
+  for (const w of ws) {
+    if (w.place === 'home') L.push(`🏠 Домашнє: кругів ${w.rounds} × повторень ${w.reps} (всього ${workoutReps(w)})`);
+    else if (w.place === 'gym') L.push(`🏋️ У залі: повторень ${w.reps}`);
+    else L.push(`⭐ ${w.type || 'Тренування'}: ${w.min || 0} хв`);
+  }
+  return L.join('\n');
+}
+async function sendReport() {
+  const text = buildReport();
+  const url = (window.FITGRAM_CONFIG || {}).reportUrl;
+  if (!url || !tg || !tg.initData) { openSheet('report', null, { text, note: !url ? 'config' : 'tg' }); return; }
+  const btn = $('[data-a="send-report"]');
+  if (btn) { btn.disabled = true; btn.textContent = 'Надсилаю…'; }
+  try {
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ initData: tg.initData, text }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.error || 'HTTP ' + r.status);
+    toast('Звіт надіслано в чат із ботом ✓'); haptic('medium');
+  } catch (e) {
+    openSheet('report', null, { text, note: 'error', error: String(e.message || e) });
+  } finally {
+    if (ui.tab === 'home') render();
+  }
+}
+function reportSheet() {
+  const s = ui.sheet;
+  const msg = s.note === 'config' ? 'Автоматичну відправку в бот ще не налаштовано (див. README). Скопіюйте звіт нижче.'
+    : s.note === 'tg' ? 'Відправка в бот працює лише всередині Telegram. Скопіюйте звіт нижче.'
+    : s.note === 'error' ? `Не вдалося надіслати: ${esc(s.error)}. Скопіюйте звіт нижче.` : '';
+  return `<h3>Звіт</h3>${msg ? `<div class="hint bad" style="margin-bottom:10px">${msg}</div>` : ''}
+    <div class="field"><textarea id="r-text" rows="12" readonly>${esc(s.text)}</textarea></div>
+    <button class="btn" data-a="copy-report">Скопіювати</button>`;
+}
+
 /* ---------- sheet / toast ---------- */
 function openSheet(type, id, extra) { ui.sheet = { type, id, ...extra }; renderSheet(); }
 function closeSheet() { ui.sheet = null; renderSheet(); }
 function renderSheet() {
   const el = $('#sheet');
   if (!ui.sheet) { el.innerHTML = ''; return; }
-  const builders = { product: productSheet, cats: catsSheet, custom: customSheet, workout: workoutSheet };
+  const builders = { report: reportSheet, product: productSheet, cats: catsSheet, custom: customSheet, workout: workoutSheet };
   const body = builders[ui.sheet.type]();
   el.innerHTML = `<div class="overlay" data-a="close-sheet"></div><div class="sheet"><div class="grab"></div>${body}</div>`;
   if (ui.sheet.type === 'product') updateProductInfo();
@@ -552,7 +623,7 @@ function toast(msg) {
 
 /* ---------- render ---------- */
 function render() {
-  const views = { food: foodView, steps: stepsView, workout: workoutView, profile: profileView };
+  const views = { home: homeView, food: foodView, steps: stepsView, workout: workoutView, profile: profileView };
   $('#view').innerHTML = views[ui.tab]();
   $('#tabs').innerHTML = TABS.map(([id, ic, t]) => `<button data-a="tab" data-id="${id}" class="${ui.tab === id ? 'on' : ''}"><span class="ic">${ic}</span>${t}</button>`).join('');
 }
@@ -588,6 +659,13 @@ const actions = {
     state.customProducts = state.customProducts.filter((p) => p.id !== id);
     for (const k of Object.keys(state.food)) { delete state.food[k][id]; if (!Object.keys(state.food[k]).length) delete state.food[k]; }
     persist(); closeSheet(); render();
+  },
+  'send-report': sendReport,
+  'copy-report': () => {
+    const ta = $('#r-text'); ta.select(); ta.setSelectionRange(0, 99999);
+    const ok = () => toast('Скопійовано ✓');
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(ta.value).then(ok, () => { document.execCommand('copy'); ok(); });
+    else { document.execCommand('copy'); ok(); }
   },
   'add-workout': () => openSheet('workout'),
   'edit-workout': (el) => openSheet('workout', el.dataset.id),

@@ -138,3 +138,13 @@ h3 { font-size: 17px; margin: 0 0 12px; }
 .catset { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
 .catset label { flex: 1; font-size: 14px; }
 .catset input { width: 90px; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 9px 10px; font-size: 16px; text-align: right; }
+
+/* home menu */
+.menu { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.menu-card { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-height: 120px; padding: 14px 16px;
+  background: var(--card); border: 0; border-radius: 18px; text-align: left; cursor: pointer; }
+.menu-card .mic { font-size: 30px; line-height: 1; margin-bottom: 6px; }
+.menu-card b { font-size: 17px; }
+.menu-card .sub { font-size: 13px; color: var(--hint); }
+.field textarea { resize: none; font-size: 14px; line-height: 1.4; }
+#tabs button { font-size: 10.5px; }
