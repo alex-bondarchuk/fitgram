@@ -15,6 +15,8 @@ const shift = (k, n) => { const d = parseKey(k); d.setDate(d.getDate() + n); ret
 const todayKey = () => dkey(new Date());
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 const haptic = (t = 'light') => { try { tg && tg.HapticFeedback && tg.HapticFeedback.impactOccurred(t); } catch (e) {} };
+const tgUser = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) || null;
+const apiBase = () => String((window.FITGRAM_CONFIG || {}).reportUrl || '').replace(/\/+$/, '');
 
 /* ---------- catalog: categories & products ---------- */
 const CATS = [
@@ -79,7 +81,8 @@ const PRODUCTS = [
 ];
 
 /* ---------- state & storage ---------- */
-const KEY = 'fitgram_v1';
+const LEGACY_KEY = 'fitgram_v1';
+let KEY = LEGACY_KEY; // для користувача Telegram стає 'fitgram_v1_<id>' (див. init)
 const defaults = () => ({
   updatedAt: 0,
   profile: { name: '', sex: 'm', age: 30, height: 175, weight: 75, activity: 1.375, goal: 'maintain' },
@@ -153,7 +156,7 @@ const ACTIVITY = [[1.2, 'Сидячий (без тренувань)'], [1.375, '
   [1.725, 'Висока (6–7 тренувань/тиждень)'], [1.9, 'Дуже висока (фізична робота + спорт)']];
 const GOALS = [['lose', 'Схуднути'], ['maintain', 'Підтримувати вагу'], ['gain', 'Набрати масу']];
 
-const ui = { tab: 'home', date: todayKey(), sheet: null, collapsed: {} };
+const ui = { tab: 'home', date: todayKey(), sheet: null, collapsed: {}, admin: false, measOpen: false };
 
 /* ---------- date nav ---------- */
 function dateLabel(k) {
@@ -396,17 +399,16 @@ function setSteps(n) {
 
 /* ---------- WORKOUTS ---------- */
 const PLACES = { home: ['🏠', 'Домашнє тренування'], gym: ['🏋️', 'Тренування в залі'] };
-const workoutReps = (w) => (w.place === 'home' ? (w.rounds || 0) * (w.reps || 0) : (w.reps || 0));
 function workoutView() {
   const list = state.workouts[ui.date] || [];
   const days = []; for (let i = 6; i >= 0; i--) days.push(shift(ui.date, -i));
   const all = days.flatMap((d) => state.workouts[d] || []);
-  const reps = all.reduce((a, w) => a + workoutReps(w), 0);
+  const maxReps = Math.max(0, ...all.filter((w) => w.place).map((w) => w.reps || 0)); // найбільше повторень за один підхід
   const home = all.filter((w) => w.place === 'home').length, gym = all.filter((w) => w.place === 'gym').length;
   let html = `<h2>Тренування</h2>${dateNav()}
   <div class="card"><div class="hint" style="margin-bottom:8px">За останні 7 днів</div>
     <div class="grid3"><div class="stat"><b>${all.length}</b><span>тренувань</span></div>
-      <div class="stat"><b>${fmt(reps)}</b><span>повторень</span></div>
+      <div class="stat"><b>${fmt(maxReps)}</b><span>Max повторень</span></div>
       <div class="stat"><b>${home} / ${gym}</b><span>вдома / у залі</span></div></div></div>
   <button class="btn" data-a="add-workout">+ Записати тренування</button>`;
   if (!list.length) html += `<div class="empty">У цей день тренувань немає.<br>Час порухатись 💪</div>`;
@@ -418,7 +420,7 @@ function workoutView() {
         : w.place === 'gym' ? `Повторень: ${w.reps}` : `${w.min || 0} хв${w.note ? ' · ' + esc(w.note) : ''}`;
       return `<button class="item" data-a="edit-workout" data-id="${w.id}">
         <div><div class="name">${title}</div><div class="sub">${sub}</div></div>
-        <div class="kc">${pl ? workoutReps(w) + ' повт.' : (w.kcal ? fmt(w.kcal) + ' ккал' : '')}</div></button>`;
+        ${!pl && w.kcal ? `<div class="kc">${fmt(w.kcal)} ккал</div>` : ''}</button>`;
     }).join('');
   return html;
 }
@@ -466,22 +468,53 @@ function mSet(k, d, v) {
   if (v > 0) rec[k] = v; else delete rec[k];
   if (!Object.keys(rec).length) delete state.measures[d];
 }
+// Заміри робимо щонеділі вранці. Після неділі 04:00 (за місцевим часом) вони «очікуються»,
+// доки не буде жодного запису з датою від цієї неділі.
+function lastSundayKey(now = new Date()) {
+  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 4, 0, 0);
+  d.setDate(d.getDate() - d.getDay());
+  if (now < d) d.setDate(d.getDate() - 7);
+  return dkey(d);
+}
+function measuresDue(now = new Date()) {
+  const since = lastSundayKey(now);
+  return !MEASURES.some(([k]) => mSeries(k).some((p) => p.d >= since));
+}
+// Міні-графік: до 6 останніх записів; точки з підписом першої й останньої дати.
+function miniChart(series) {
+  const vals = series.map((p) => p.v);
+  const min = Math.min(...vals), max = Math.max(...vals), span = max - min || 1;
+  const W = 120, H = 40, P = 5;
+  const xy = vals.map((v, i) => [P + (vals.length === 1 ? (W - 2 * P) / 2 : (i / (vals.length - 1)) * (W - 2 * P)), H - P - (max === min ? (H - 2 * P) / 2 : ((v - min) / span) * (H - 2 * P))]);
+  const dl = (k) => parseKey(k).toLocaleDateString('uk-UA', { day: 'numeric', month: 'short' });
+  return `<svg viewBox="0 0 ${W} ${H}" class="mini">${xy.length > 1 ? `<polyline points="${xy.map((p) => p.join(',')).join(' ')}" fill="none" stroke="var(--btn)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>` : ''}
+    ${xy.map((p, i) => `<circle cx="${p[0]}" cy="${p[1]}" r="${i === xy.length - 1 ? 3.5 : 2.5}" fill="var(--btn)"/>`).join('')}</svg>
+    <div class="row hint mini-d"><span>${dl(series[0].d)}</span>${series.length > 1 ? `<span>${dl(series[series.length - 1].d)}</span>` : ''}</div>`;
+}
 function measureView() {
   const prior = (k) => { const ser = mSeries(k).filter((p) => p.d < ui.date); return ser.length ? ser[ser.length - 1].v : ''; };
-  let html = `<h2>Заміри</h2>${dateNav()}
-  <div class="card"><h3>Записати заміри</h3><div class="grid2">
-    ${MEASURES.map(([k, label, unit]) => field(`${label}, ${unit}`, 'm-' + k, mGet(k, ui.date) || '', { inputmode: 'decimal', ph: prior(k) ? String(prior(k)) : '' })).join('')}
-  </div><button class="btn" data-a="save-measures">Зберегти заміри</button></div>`;
+  const due = measuresDue();
+  let html = `<h2>Заміри</h2>${dateNav()}`;
+  if (ui.measOpen) {
+    html += `<div class="card"><button class="mform-head" data-a="toggle-measures"><b>Записати заміри</b><span class="chev up">⌃</span></button>
+      <div class="grid2" style="margin-top:12px">
+      ${MEASURES.map(([k, label, unit]) => field(`${label}, ${unit}`, 'm-' + k, mGet(k, ui.date) || '', { inputmode: 'decimal', ph: prior(k) ? String(prior(k)) : '' })).join('')}
+      </div><button class="btn" data-a="save-measures">Зберегти заміри</button></div>`;
+  } else {
+    html += `<button class="item mcell" data-a="toggle-measures"><div><div class="name">${due ? '<span class="dot inl"></span>' : ''}Записати заміри</div>
+      <div class="sub">${due ? 'Час записати: заміри раз на тиждень, вранці в неділю' : 'Раз на тиждень, вранці в неділю'}</div></div><span class="chev">⌄</span></button>`;
+  }
+  html += `<div class="hint" style="margin:14px 2px 8px">Прогрес за останні 6 записів</div><div class="grid2">`;
   for (const [k, label, unit] of MEASURES) {
-    const ser = mSeries(k);
-    if (!ser.length) continue;
+    const ser = mSeries(k).slice(-6);
     const last = ser[ser.length - 1], prev = ser[ser.length - 2];
     const d = prev ? last.v - prev.v : 0;
-    html += `<div class="card"><div class="row"><b>${label}</b><span class="hint">${parseKey(last.d).toLocaleDateString('uk-UA', { day: 'numeric', month: 'short' })}</span></div>
-      <div class="row"><span class="big" style="font-size:28px">${r1(last.v)} <span class="hint" style="font-size:15px">${unit}</span></span>
-        <span class="hint">${prev ? (d > 0 ? '+' : '') + r1(d) + ' ' + unit + ' від попереднього' : ''}</span></div>
-      ${ser.length > 1 ? lineChart(ser.slice(-30), unit) : ''}</div>`;
+    html += `<div class="card mcard"><div class="hint">${label}</div>
+      ${last ? `<div class="mval">${r1(last.v)} <span class="hint">${unit}</span></div>
+        <div class="hint mdelta">${prev ? (d > 0 ? '+' : '') + r1(d) + ' ' + unit : 'перший запис'}</div>${miniChart(ser)}`
+      : '<div class="mval">—</div><div class="hint mdelta">ще немає записів</div>'}</div>`;
   }
+  html += '</div>';
   const dates = [...new Set(Object.keys(state.weights).concat(Object.keys(state.measures)))].sort().reverse().slice(0, 10);
   if (dates.length) {
     html += `<div class="card"><h3>Історія</h3><table class="mt"><tr><th></th>${MEASURES.map(([, l]) => `<th>${l}</th>`).join('')}</tr>
@@ -498,6 +531,7 @@ function saveMeasures() {
     if (v > 0) n++;
     mSet(k, ui.date, v);
   }
+  ui.measOpen = false;
   persist(); render(); toast(n ? 'Заміри збережено ✓' : 'Заміри очищено'); haptic();
 }
 
@@ -550,9 +584,17 @@ function selectBind(label, path, options, value) {
   return `<div class="field"><label for="b-${path}">${label}</label><select id="b-${path}" data-bind="${path}" ${typeof options[0][0] === 'number' ? 'data-num' : ''}>
     ${options.map(([v, t]) => `<option value="${v}" ${String(v) === String(value) ? 'selected' : ''}>${t}</option>`).join('')}</select></div>`;
 }
+function accountHtml() {
+  const u = tgUser;
+  if (!u) return '';
+  const name = [u.first_name, u.last_name].filter(Boolean).join(' ');
+  return `<div class="card"><div class="row"><b>${esc(name || 'Telegram')}</b>${ui.admin ? '<span class="badge-admin">адмін</span>' : ''}</div>
+    <div class="hint">${u.username ? '@' + esc(u.username) + ' · ' : ''}Telegram ID: ${esc(u.id)}</div>
+    <div class="hint" style="margin-top:4px">Дані прив’язані до цього акаунта й синхронізуються між вашими пристроями.</div></div>`;
+}
 function profileView() {
   const p = state.profile, g = state.goals;
-  return `<h2>Мої параметри</h2>
+  return `<h2>Мої параметри</h2>${accountHtml()}
   <div class="card">
     ${bindField("Ім’я", 'profile.name', p.name, { numeric: false })}
     <div class="grid2">
@@ -595,14 +637,15 @@ function homeView() {
   const wk = (state.workouts[ui.date] || []).length;
   const w = state.profile.weight;
   const mCount = MEASURES.filter(([k]) => mGet(k, ui.date) > 0).length;
-  const card = (id, ic, title, line, cls = '') => `<button class="menu-card ${cls}" data-a="tab" data-id="${id}">
-    <span class="mic">${ic}</span><b>${title}</b><span class="sub">${line}</span></button>`;
+  const due = measuresDue();
+  const card = (id, ic, title, line, cls = '', dot = false) => `<button class="menu-card ${cls}" data-a="tab" data-id="${id}">
+    ${dot ? '<span class="dot" title="Час записати заміри"></span>' : ''}<span class="mic">${ic}</span><b>${title}</b><span class="sub">${line}</span></button>`;
   return `<h2>${state.profile.name ? 'Привіт, ' + esc(state.profile.name) + '!' : 'FitGram'}</h2>${dateNav()}
   <div class="menu">
     ${card('food', '🍽', 'Харчування', `${fmt(t.kcal)} / ${fmt(budget)} ккал`)}
     ${card('steps', '👟', 'Кроки', `${fmt(steps)} / ${fmt(goal)}`)}
     ${card('workout', '🏋️', 'Тренування', wk ? `записано: ${wk}` : 'ще немає')}
-    ${card('measure', '📏', 'Заміри', mCount ? `заповнено: ${mCount} з 5` : 'ще немає')}
+    ${card('measure', '📏', 'Заміри', due ? 'час записати' : mCount ? `заповнено: ${mCount} з 5` : 'ще немає', '', due)}
     ${card('profile', '👤', 'Профіль', w ? `${r1(w)} кг` : 'параметри', 'wide')}
   </div>
   <button class="btn" data-a="send-report" style="margin-top:14px">📤 Відправити звіт</button>
@@ -629,7 +672,7 @@ function buildReport() {
   const ws = state.workouts[ui.date] || [];
   if (!ws.length) L.push('Тренувань не було');
   for (const w of ws) {
-    if (w.place === 'home') L.push(`🏠 Домашнє: кругів ${w.rounds} × повторень ${w.reps} (всього ${workoutReps(w)})`);
+    if (w.place === 'home') L.push(`🏠 Домашнє: кругів ${w.rounds}, повторень ${w.reps}`);
     else if (w.place === 'gym') L.push(`🏋️ У залі: повторень ${w.reps}`);
     else L.push(`⭐ ${w.type || 'Тренування'}: ${w.min || 0} хв`);
   }
@@ -638,13 +681,14 @@ function buildReport() {
 }
 async function sendReport() {
   const text = buildReport();
-  const url = (window.FITGRAM_CONFIG || {}).reportUrl;
+  const url = apiBase();
   if (!url || !tg || !tg.initData) { openSheet('report', null, { text, note: !url ? 'config' : 'tg' }); return; }
   const btn = $('[data-a="send-report"]');
   if (btn) { btn.disabled = true; btn.textContent = 'Надсилаю…'; }
   try {
-    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ initData: tg.initData, text }) });
+    const r = await fetch(url + '/report', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ initData: tg.initData, text }) });
     const j = await r.json().catch(() => ({}));
+    if (r.status === 403) throw new Error('доступ закрито розробником');
     if (!r.ok || !j.ok) throw new Error(j.error || 'HTTP ' + r.status);
     toast('Звіт надіслано в чат із ботом ✓'); haptic('medium');
   } catch (e) {
@@ -720,6 +764,7 @@ const actions = {
     for (const k of Object.keys(state.food)) { delete state.food[k][id]; if (!Object.keys(state.food[k]).length) delete state.food[k]; }
     persist(); closeSheet(); render();
   },
+  'toggle-measures': () => { ui.measOpen = !ui.measOpen; render(); },
   'save-measures': saveMeasures,
   'goto-date': (el) => { ui.date = el.dataset.d; render(); window.scrollTo(0, 0); },
   'send-report': sendReport,
@@ -766,18 +811,80 @@ const onInput = (e) => {
 };
 document.addEventListener('input', onInput);
 document.addEventListener('change', onInput);
+// Якщо застосунок лишився відкритим, червона крапка «Заміри» з’явиться після повернення в нього.
+document.addEventListener('visibilitychange', () => { if (!document.hidden && started && ui.tab === 'home') render(); });
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && e.target.id === 'stepsInput') actions['save-steps']();
 });
 
+/* ---------- access gate (доступ лише для схвалених користувачів) ---------- */
+// Дані окремі для кожного акаунта Telegram: ключ localStorage містить ID, а CloudStorage Telegram і так прив’язане до акаунта.
+function bindStorageToUser(id) {
+  KEY = LEGACY_KEY + '_' + id;
+  try {
+    const old = localStorage.getItem(LEGACY_KEY);
+    if (old && !localStorage.getItem(KEY)) localStorage.setItem(KEY, old); // перенесення даних зі старої версії
+    localStorage.removeItem(LEGACY_KEY);
+  } catch (e) {}
+}
+const ACCESS_KEY = () => 'fitgram_access_' + (tgUser ? tgUser.id : '');
+const isLocalDev = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
+// Перевірка доступу вимкнена, якщо сервер не налаштований або застосунок відкрито локально (для розробки; ?gate=1 вмикає її).
+const gateEnabled = () => !!apiBase() && (!isLocalDev || /[?&]gate=1/.test(location.search));
+
+function showGate(icon, title, text, button) {
+  $('#tabs').innerHTML = '';
+  $('#sheet').innerHTML = '';
+  const idLine = tgUser ? `<div class="hint">Ваш Telegram ID: ${esc(tgUser.id)}</div>` : '';
+  $('#view').innerHTML = `<div class="gate"><div class="gi">${icon}</div><h2>${title}</h2>
+    <div class="hint">${text}</div>${idLine}
+    ${button ? `<button class="btn small" data-a="gate-retry">${button}</button>` : ''}</div>`;
+}
+let gateTimer = null;
+async function checkAccess() {
+  clearTimeout(gateTimer);
+  if (!tg || !tg.initData) return showGate('📱', 'Відкрийте у Telegram', 'FitGram працює лише всередині Telegram. Знайдіть бота й запустіть застосунок кнопкою меню.');
+  let res;
+  try {
+    const r = await fetch(apiBase() + '/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ initData: tg.initData }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.error || 'HTTP ' + r.status);
+    res = j;
+  } catch (e) {
+    let known = false;
+    try { known = localStorage.getItem(ACCESS_KEY()) === '1'; } catch (e2) {}
+    if (known && e instanceof TypeError) return startApp(); // немає мережі, але доступ уже підтверджували раніше
+    return showGate('⚠️', 'Не вдалося перевірити доступ', esc(String(e.message || e)), 'Повторити');
+  }
+  if (res.status === 'approved') {
+    try { localStorage.setItem(ACCESS_KEY(), '1'); } catch (e) {}
+    ui.admin = !!res.admin;
+    return startApp();
+  }
+  try { localStorage.removeItem(ACCESS_KEY()); } catch (e) {}
+  if (res.status === 'pending') {
+    showGate('⏳', 'Очікуємо підтвердження', 'Запит на доступ надіслано адміністратору. Щойно доступ відкриють, застосунок запуститься сам.', 'Перевірити зараз');
+    gateTimer = setTimeout(checkAccess, 6000);
+    return;
+  }
+  showGate('🚫', 'Доступ не надано', 'Розробник не відкрив вам доступ до FitGram.');
+}
+actions['gate-retry'] = () => { showGate('🔎', 'Перевіряю доступ…', ''); checkAccess(); };
+
 /* ---------- init ---------- */
+let started = false;
+function startApp() {
+  if (started) return;
+  started = true;
+  if (tgUser) bindStorageToUser(tgUser.id); // лише після підтвердження доступу
+  if (tgUser && !localStorage.getItem(KEY)) state.profile.name = tgUser.first_name || '';
+  loadLocal();
+  render();
+  cloudLoad();
+}
 if (tg) {
   try { tg.ready(); tg.expand(); tg.disableVerticalSwipes && tg.disableVerticalSwipes(); } catch (e) {}
-  if (!localStorage.getItem(KEY) && tg.initDataUnsafe && tg.initDataUnsafe.user) {
-    state.profile.name = tg.initDataUnsafe.user.first_name || '';
-  }
 }
-loadLocal();
-render();
-cloudLoad();
+if (gateEnabled()) { showGate('🔎', 'Перевіряю доступ…', ''); checkAccess(); }
+else startApp();
 })();
